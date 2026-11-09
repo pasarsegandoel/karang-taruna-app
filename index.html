@@ -64,7 +64,7 @@
         </div>
       </div>
 
-      <!-- Input khusus Kedai & Tubing (Disembunyikan awalnya jika bukan pilihan) -->
+      <!-- Input khusus Kedai & Tubing -->
       <div id="field-pengeluaran" class="space-y-3 hidden">
         <div>
           <label class="text-[11px] font-bold text-slate-500 block mb-1">Belanja / Pengeluaran (Rp)</label>
@@ -93,7 +93,7 @@
     <div class="space-y-3">
       <h2 class="font-bold text-sm text-slate-700 px-1">📋 Rekap Laporan Usaha</h2>
       <div id="list-container" class="space-y-3">
-        <!-- Card laporan akan muncul di sini secara otomatis -->
+        <!-- Card laporan akan muncul di sini -->
       </div>
     </div>
 
@@ -101,13 +101,12 @@
 
   <script>
     // ⚠️ MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI:
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvMZ82Ar3jSv8rDHDNpGsGjKIgE3WkGN0f3d7eiBnIc614YTsnjet2GPmFxuUwII8lwA/exec";
+    const APPS_SCRIPT_URL = "PASANG_URL_WEB_APP_APPS_SCRIPT_ANDA_DI_SINI";
 
     function formatRupiah(num) {
       return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
     }
 
-    // Set tanggal default hari ini
     document.getElementById('input-tanggal').value = new Date().toISOString().split('T')[0];
 
     function toggleUnitForm() {
@@ -131,25 +130,21 @@
       }
     }
 
-    let globalData = null;
-
     function loadData() {
-      if (APPS_SCRIPT_URL.includes("GANTI_DENGAN_URL")) {
-        document.getElementById('status-box').innerHTML = "⚠️ URL Apps Script belum diisi di dalam kode index.html!";
+      if (APPS_SCRIPT_URL.includes("PASANG_URL_WEB_APP")) {
+        document.getElementById('status-box').innerHTML = "⚠️ Isikan URL Apps Script di dalam kode index.html lebih dulu!";
         return;
       }
 
-      document.getElementById('status-box').innerHTML = "Memuat data terbaru...";
+      document.getElementById('status-box').innerHTML = "Memuat data terbaru dari Google Sheets...";
       fetch(`${APPS_SCRIPT_URL}?action=getData`)
         .then(res => res.json())
         .then(data => {
-          globalData = data;
-          document.getElementById('status-box').innerHTML = "✅ Data Berhasil Disinkronkan dengan Google Sheets";
+          document.getElementById('status-box').innerHTML = "✅ Data Berhasil Disinkronkan";
           renderList(data);
         })
         .catch(err => {
-          document.getElementById('status-box').innerHTML = "❌ Gagal memuat data. Periksa koneksi/URL.";
-          console.error(err);
+          document.getElementById('status-box').innerHTML = "❌ Gagal memuat data. Periksa URL Apps Script.";
         });
     }
 
@@ -162,18 +157,16 @@
       if (data.kedai) data.kedai.forEach(item => allTx.push({ ...item, unit: 'kedai' }));
       if (data.tubing) data.tubing.forEach(item => allTx.push({ ...item, unit: 'tubing' }));
 
-      // Urutkan dari tanggal terbaru
       allTx.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
 
       if (allTx.length === 0) {
-        container.innerHTML = `<div class="bg-white p-4 rounded-2xl text-center text-xs text-slate-500">Belum ada data laporan tersimpan.</div>`;
+        container.innerHTML = `<div class="bg-white p-4 rounded-2xl text-center text-xs text-slate-500">Belum ada catatan laporan tersimpan.</div>`;
         return;
       }
 
       allTx.forEach(t => {
         let card = document.createElement('div');
         card.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-2 text-xs";
-        
         let unitName = "";
         let badgeColor = "";
         let calcHtml = "";
@@ -257,8 +250,8 @@
     }
 
     function submitData() {
-      if (APPS_SCRIPT_URL.includes("GANTI_DENGAN_URL")) {
-        alert("Harap masukkan URL Web App Apps Script terlebih dahulu di dalam file kode!");
+      if (APPS_SCRIPT_URL.includes("PASANG_URL_WEB_APP")) {
+        alert("Harap pasang URL Web App Apps Script milik Anda di kode!");
         return;
       }
 
@@ -298,10 +291,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: actionName, payload })
       }).then(() => {
-        alert("Laporan berhasil dikirim dan masuk ke Google Sheets!");
+        alert("Laporan berhasil tersimpan ke Google Sheets!");
         btn.innerText = "Kirim & Simpan Laporan";
         btn.disabled = false;
-        loadData(); // Refresh data
+        loadData();
       }).catch(err => {
         alert("Gagal mengirim laporan: " + err);
         btn.innerText = "Kirim & Simpan Laporan";
@@ -309,7 +302,6 @@
       });
     }
 
-    // Load data otomatis saat halaman dibuka
     window.onload = loadData;
   </script>
 </body>
