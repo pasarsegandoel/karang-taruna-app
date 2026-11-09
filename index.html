@@ -11,8 +11,6 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <!-- Babel untuk JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans">
   <div id="root"></div>
@@ -20,7 +18,9 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    // Helper Format Rupiah
+    // URL Web App Apps Script Anda
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvMZ82Ar3jSv8rDHDNpGsGjKIgE3WkGN0f3d7eiBnIc614YTsnjet2GPmFxuUwII8lwA/exec";
+
     const formatRupiah = (number) => {
       return new Intl.NumberFormat('id-ID', {
         style: 'currency',
@@ -29,59 +29,16 @@
       }).format(number || 0);
     };
 
-    // Data Sampel Awal (Bisa ditambah/edit langsung di web)
-    const INITIAL_TRANSACTIONS = [
-      {
-        id: '1',
-        unit: 'pasar',
-        tanggal: '2026-11-08',
-        omset: 1500000,
-        modalAwal: 500000,
-        jumlahPetugas: 5,
-        kasTambahanPersen: 10,
-        catatan: 'Pasar Segandoel Minggu Pagi'
-      },
-      {
-        id: '2',
-        unit: 'kedai',
-        tanggal: '2026-11-07',
-        omset: 450000,
-        pengeluaran: 200000,
-        jumlahPetugas: 2,
-        catatan: 'Kedai Pemuda Sabtu Malam'
-      },
-      {
-        id: '3',
-        unit: 'tubing',
-        tanggal: '2026-11-08',
-        omset: 800000,
-        jumlahPetugas: 3,
-        catatan: 'Persewaan Ban & Pelampung'
-      }
-    ];
-
-    export default function App() {
-      const [activeTab, setActiveTab] = useState('laporan'); // 'laporan', 'buku_kas', 'ringkasan'
-      const [filterUnit, setFilterUnit] = useState('semua'); // 'semua', 'pasar', 'kedai', 'tubing'
-      
-      const [transactions, setTransactions] = useState(() => {
-        const saved = localStorage.getItem('kt_transactions');
-        return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-      });
-
-      const [kasBapakOutflow, setKasBapakOutflow] = useState(() => {
-        const saved = localStorage.getItem('kt_kas_out');
-        return saved ? JSON.parse(saved) : [];
-      });
-
+    function App() {
+      const [activeTab, setActiveTab] = useState('laporan'); 
+      const [filterUnit, setFilterUnit] = useState('semua');
+      const [transactions, setTransactions] = useState([]);
+      const [kasBapakOutflow, setKasBapakOutflow] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [syncStatus, setSyncStatus] = useState("🟢 Terhubung ke Google Sheets");
       const [copiedId, setCopiedId] = useState(null);
       const [showAddModal, setShowAddModal] = useState(false);
       const [editingTx, setEditingTx] = useState(null);
-
-      const [settings, setSettings] = useState({
-        kasBapakPersen: 10,
-        kasTambahanPasarPersen: 10,
-      });
 
       const [formData, setFormData] = useState({
         unit: 'pasar',
@@ -89,26 +46,73 @@
         omset: '',
         modalAwal: '',
         pengeluaran: '',
-        jumlahPetugas: '',
-        kasTambahanPersen: 10,
+        jumlahPetugas: 1,
         catatan: ''
       });
 
-      // Simpan ke localStorage agar data tidak hilang saat direfresh
-      useEffect(() => {
-        localStorage.setItem('kt_transactions', JSON.stringify(transactions));
-      }, [transactions]);
+      // Fetch Data dari Google Spreadsheet via Apps Script
+      const fetchSheetData = () => {
+        setLoading(true);
+        fetch(`${APPS_SCRIPT_URL}?action=getData`)
+          .then(res => res.json())
+          .then(data => {
+            let combined = [];
+            if (data.pasar) {
+              data.pasar.forEach((item, idx) => combined.push({
+                id: 'pasar_' + idx,
+                unit: 'pasar',
+                tanggal: item.tanggal,
+                omset: Number(item.omset) || 0,
+                modalAwal: Number(item.modal) || 0,
+                jumlahPetugas: Number(item.jumlahIbu) || 1,
+                catatan: item.catatan || ''
+              }));
+            }
+            if (data.kedai) {
+              data.kedai.forEach((item, idx) => combined.push({
+                id: 'kedai_' + idx,
+                unit: 'kedai',
+                tanggal: item.tanggal,
+                omset: Number(item.omset) || 0,
+                pengeluaran: Number(item.belanja) || 0,
+                jumlahPetugas: Number(item.jumlahPemuda) || 1,
+                catatan: item.catatan || ''
+              }));
+            }
+            if (data.tubing) {
+              data.tubing.forEach((item, idx) => combined.push({
+                id: 'tubing_' + idx,
+                unit: 'tubing',
+                tanggal: item.tanggal,
+                omset: Number(item.omset) || 0,
+                jumlahPetugas: Number(item.jumlahPemuda) || 1,
+                catatan: item.catatan || ''
+              }));
+            }
+            combined.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+            setTransactions(combined);
+
+            if (data.kasBapak) {
+              setKasBapakOutflow(data.kasBapak.map((k, i) => ({
+                id: 'kb_' + i,
+                tanggal: k.tanggal,
+                nominal: Number(k.nominal) || 0,
+                keterangan: k.keterangan || ''
+              })));
+            }
+            setLoading(false);
+            setSyncStatus("🟢 Synchronized with Google Sheets");
+          })
+          .catch(err => {
+            console.error(err);
+            setLoading(false);
+            setSyncStatus("⚠️ Gagal memuat data dari Spreadsheet");
+          });
+      };
 
       useEffect(() => {
-        localStorage.setItem('kt_kas_out', JSON.stringify(kasBapakOutflow));
-      }, [kasBapakOutflow]);
-
-      // Render ikon Lucide
-      useEffect(() => {
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      });
+        fetchSheetData();
+      }, []);
 
       const calculateTx = (t) => {
         const omset = Number(t.omset) || 0;
@@ -116,10 +120,9 @@
 
         if (t.unit === 'pasar') {
           const modalAwal = Number(t.modalAwal) || 0;
-          const kasTambahanPersen = Number(t.kasTambahanPersen ?? settings.kasTambahanPasarPersen);
           const hasilBersih = Math.max(0, omset - modalAwal);
-          const kasBapak = hasilBersih * (settings.kasBapakPersen / 100);
-          const kasTambahan = hasilBersih * (kasTambahanPersen / 100);
+          const kasBapak = hasilBersih * 0.10;
+          const kasTambahan = hasilBersih * 0.10;
           const sisaBagiIbu = Math.max(0, hasilBersih - kasBapak - kasTambahan);
           const hakPerPetugas = sisaBagiIbu / jumlahPetugas;
           return { hasilBersih, kasBapak, kasTambahan, sisaBagiIbu, hakPerPetugas };
@@ -131,7 +134,7 @@
           const hakPerPetugas = bagiHasilPemuda / jumlahPetugas;
           return { hasilBersih, kasModalKedai, bagiHasilPemuda, hakPerPetugas };
         } else if (t.unit === 'tubing') {
-          const kasBapak = omset * (settings.kasBapakPersen / 100);
+          const kasBapak = omset * 0.10;
           const sisaHasil = omset - kasBapak;
           const kasTubing = sisaHasil * 0.50;
           const bagiHasilPemuda = sisaHasil * 0.50;
@@ -151,7 +154,7 @@
         });
         let totalKeluar = kasBapakOutflow.reduce((acc, k) => acc + (Number(k.nominal) || 0), 0);
         return { totalMasuk, totalKeluar, saldoAkhir: totalMasuk - totalKeluar };
-      }, [transactions, kasBapakOutflow, settings]);
+      }, [transactions, kasBapakOutflow]);
 
       const globalSummary = useMemo(() => {
         let totalOmset = 0;
@@ -177,39 +180,50 @@
           totalOmset,
           totalKasBapakSaldo: kasBapakSummary.saldoAkhir,
           totalModalUsahaAcc,
-          totalBagiHasilWarga,
-          totalTransaksi: transactions.length
+          totalBagiHasilWarga
         };
       }, [transactions, kasBapakSummary]);
 
       const handleSaveTransaction = (e) => {
         e.preventDefault();
-        const payload = {
-          id: editingTx ? editingTx.id : Date.now().toString(),
-          unit: formData.unit,
+        setSyncStatus("⏳ Mengirim ke Google Sheets...");
+
+        let actionName = 'addPasar';
+        let payload = {
           tanggal: formData.tanggal,
           omset: Number(formData.omset) || 0,
-          modalAwal: Number(formData.modalAwal) || 0,
-          pengeluaran: Number(formData.pengeluaran) || 0,
-          jumlahPetugas: Math.max(1, Number(formData.jumlahPetugas) || 1),
-          kasTambahanPersen: Number(formData.kasTambahanPersen) || 10,
           catatan: formData.catatan || ''
         };
 
-        if (editingTx) {
-          setTransactions(transactions.map(t => t.id === editingTx.id ? payload : t));
-        } else {
-          setTransactions([payload, ...transactions]);
+        if (formData.unit === 'pasar') {
+          actionName = 'addPasar';
+          payload.modal = Number(formData.modalAwal) || 0;
+          payload.pengeluaran = 0;
+          payload.jumlahIbu = Number(formData.jumlahPetugas) || 1;
+        } else if (formData.unit === 'kedai') {
+          actionName = 'addKedai';
+          payload.belanja = Number(formData.pengeluaran) || 0;
+          payload.jumlahPemuda = Number(formData.jumlahPetugas) || 1;
+        } else if (formData.unit === 'tubing') {
+          actionName = 'addTubing';
+          payload.pengeluaran = 0;
+          payload.jumlahPemuda = Number(formData.jumlahPetugas) || 1;
         }
-        setShowAddModal(false);
-        setEditingTx(null);
-        resetFormData();
-      };
 
-      const handleDeleteTx = (id) => {
-        if (confirm("Yakin ingin menghapus catatan ini?")) {
-          setTransactions(transactions.filter(t => t.id !== id));
-        }
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: actionName, payload })
+        }).then(() => {
+          alert("Laporan berhasil dikirim dan tersimpan di Google Sheets!");
+          setShowAddModal(false);
+          resetFormData();
+          setTimeout(fetchSheetData, 1500);
+        }).catch(err => {
+          alert("Gagal mengirim data: " + err);
+          setSyncStatus("❌ Error kirim data");
+        });
       };
 
       const resetFormData = () => {
@@ -219,25 +233,9 @@
           omset: '',
           modalAwal: '',
           pengeluaran: '',
-          jumlahPetugas: '',
-          kasTambahanPersen: 10,
+          jumlahPetugas: 1,
           catatan: ''
         });
-      };
-
-      const openEditModal = (t) => {
-        setEditingTx(t);
-        setFormData({
-          unit: t.unit || 'pasar',
-          tanggal: t.tanggal || new Date().toISOString().split('T')[0],
-          omset: t.omset || '',
-          modalAwal: t.modalAwal || '',
-          pengeluaran: t.pengeluaran || '',
-          jumlahPetugas: t.jumlahPetugas || 1,
-          kasTambahanPersen: t.kasTambahanPersen ?? 10,
-          catatan: t.catatan || ''
-        });
-        setShowAddModal(true);
       };
 
       const generateWAText = (t) => {
@@ -300,9 +298,9 @@
                   <p className="text-[11px] text-emerald-200">✨ Transparansi Real-Time Multi-User</p>
                 </div>
               </div>
-              <span className="bg-emerald-900/80 text-emerald-200 border border-emerald-600 text-[10px] font-medium px-2 py-1 rounded-full">
-                🟢 Live Sync
-              </span>
+              <button onClick={fetchSheetData} className="bg-emerald-900/80 hover:bg-emerald-700 text-emerald-200 border border-emerald-600 text-[10px] font-medium px-2.5 py-1.5 rounded-xl transition">
+                🔄 Refresh Data
+              </button>
             </div>
 
             {/* Navigation Tabs */}
@@ -335,22 +333,27 @@
           </header>
 
           <main className="max-w-3xl mx-auto px-4 pt-4 space-y-4">
+            {/* Status Sync */}
+            <div className="bg-white px-3 py-2 rounded-xl text-xs text-center border border-slate-200 font-medium text-slate-600">
+              {syncStatus}
+            </div>
+
             {/* Stat Bar */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
               <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Omset</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL OMSET</span>
                 <p className="text-base md:text-lg font-black text-slate-800">{formatRupiah(globalSummary.totalOmset)}</p>
               </div>
               <div className="bg-amber-50 p-3.5 rounded-2xl shadow-sm border border-amber-200/80">
-                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">🐷 Saldo Kas Bapak</span>
+                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">SALDO KAS BAPAK</span>
                 <p className="text-base md:text-lg font-black text-amber-900">{formatRupiah(kasBapakSummary.saldoAkhir)}</p>
               </div>
               <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Modal Usaha Acc</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">MODAL USAHA ACC</span>
                 <p className="text-base md:text-lg font-black text-blue-700">{formatRupiah(globalSummary.totalModalUsahaAcc)}</p>
               </div>
               <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Distribusikan Warga</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">DISTRIBUSIKAN WARGA</span>
                 <p className="text-base md:text-lg font-black text-emerald-700">{formatRupiah(globalSummary.totalBagiHasilWarga)}</p>
               </div>
             </div>
@@ -375,100 +378,97 @@
                   </div>
 
                   <button
-                    onClick={() => { setEditingTx(null); resetFormData(); setShowAddModal(true); }}
+                    onClick={() => { resetFormData(); setShowAddModal(true); }}
                     className="w-full sm:w-auto bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 shadow transition"
                   >
                     ➕ Input / Catat Laporan
                   </button>
                 </div>
 
-                {/* List Transaksi */}
-                <div className="space-y-3">
-                  {filteredList.map((t) => {
-                    const calc = calculateTx(t);
-                    return (
-                      <div key={t.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div className="bg-slate-50 border-b border-slate-100 px-4 py-2.5 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {t.unit === 'pasar' && <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-md">Pasar Segandoel</span>}
-                            {t.unit === 'kedai' && <span className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-md">Kedai Pemuda</span>}
-                            {t.unit === 'tubing' && <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-md">River Tubing</span>}
-                            <span className="text-xs text-slate-500">{t.tanggal}</span>
-                          </div>
+                {loading ? (
+                  <div className="bg-white p-8 rounded-2xl text-center text-xs text-slate-500">Memuat data dari Google Sheets...</div>
+                ) : filteredList.length === 0 ? (
+                  <div className="bg-white p-8 rounded-2xl text-center text-xs text-slate-500">Belum ada catatan laporan tersimpan.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredList.map((t) => {
+                      const calc = calculateTx(t);
+                      return (
+                        <div key={t.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                          <div className="bg-slate-50 border-b border-slate-100 px-4 py-2.5 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {t.unit === 'pasar' && <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-md">Pasar Segandoel</span>}
+                              {t.unit === 'kedai' && <span className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-md">Kedai Pemuda</span>}
+                              {t.unit === 'tubing' && <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-md">River Tubing</span>}
+                              <span className="text-xs text-slate-500">{t.tanggal}</span>
+                            </div>
 
-                          <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => handleCopyWA(t)}
                               className={`text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 transition ${copiedId === t.id ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}
                             >
                               {copiedId === t.id ? '✓ Disalin' : '📋 Salin WA'}
                             </button>
-                            <button onClick={() => openEditModal(t)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-lg border border-slate-300">
-                              ✏️ Edit
-                            </button>
-                            <button onClick={() => handleDeleteTx(t.id)} className="text-slate-400 hover:text-red-500 p-1">
-                              🗑️
-                            </button>
+                          </div>
+
+                          <div className="p-3.5 space-y-2.5 text-xs">
+                            {t.catatan && <p className="text-slate-600 italic bg-slate-50 p-2 rounded-lg">"{t.catatan}"</p>}
+
+                            {t.unit === 'pasar' && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                  <div className="flex justify-between text-slate-600"><span>Total Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
+                                  <div className="flex justify-between text-slate-600"><span>Modal Awal:</span> <span className="font-semibold">− {formatRupiah(t.modalAwal)}</span></div>
+                                  <div className="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>{formatRupiah(calc.hasilBersih)}</span></div>
+                                </div>
+                                <div className="space-y-1 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100">
+                                  <div className="flex justify-between text-amber-800"><span>Kas Bapak (10%):</span> <span className="font-bold">{formatRupiah(calc.kasBapak)}</span></div>
+                                  <div className="flex justify-between text-blue-800"><span>Kas Tambahan (10%):</span> <span className="font-bold">{formatRupiah(calc.kasTambahan)}</span></div>
+                                  <div className="bg-emerald-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
+                                    <span>Hak per Ibu ({t.jumlahPetugas} org):</span>
+                                    <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {t.unit === 'kedai' && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                  <div className="flex justify-between text-slate-600"><span>Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
+                                  <div className="flex justify-between text-slate-600"><span>Belanja:</span> <span className="font-semibold">− {formatRupiah(t.pengeluaran)}</span></div>
+                                  <div className="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>{formatRupiah(calc.hasilBersih)}</span></div>
+                                </div>
+                                <div className="space-y-1 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
+                                  <div className="flex justify-between text-amber-900"><span>Kas/Modal (50%):</span> <span className="font-bold">{formatRupiah(calc.kasModalKedai)}</span></div>
+                                  <div className="bg-amber-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
+                                    <span>Hak per Pemuda ({t.jumlahPetugas} org):</span>
+                                    <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {t.unit === 'tubing' && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                  <div className="flex justify-between text-slate-600"><span>Total Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
+                                  <div className="flex justify-between text-amber-800"><span>Kas Bapak (10%):</span> <span className="font-bold">{formatRupiah(calc.kasBapak)}</span></div>
+                                </div>
+                                <div className="space-y-1 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
+                                  <div className="bg-blue-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
+                                    <span>Hak per Pemuda ({t.jumlahPetugas} org):</span>
+                                    <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
-
-                        <div className="p-3.5 space-y-2.5 text-xs">
-                          {t.catatan && <p className="text-slate-600 italic bg-slate-50 p-2 rounded-lg">"{t.catatan}"</p>}
-
-                          {t.unit === 'pasar' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                <div className="flex justify-between text-slate-600"><span>Total Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
-                                <div className="flex justify-between text-slate-600"><span>Modal Awal:</span> <span className="font-semibold">− {formatRupiah(t.modalAwal)}</span></div>
-                                <div className="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>{formatRupiah(calc.hasilBersih)}</span></div>
-                              </div>
-                              <div className="space-y-1 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100">
-                                <div className="flex justify-between text-amber-800"><span>Kas Bapak (10%):</span> <span className="font-bold">{formatRupiah(calc.kasBapak)}</span></div>
-                                <div className="flex justify-between text-blue-800"><span>Kas Tambahan (10%):</span> <span className="font-bold">{formatRupiah(calc.kasTambahan)}</span></div>
-                                <div className="bg-emerald-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
-                                  <span>Hak per Ibu ({t.jumlahPetugas} org):</span>
-                                  <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {t.unit === 'kedai' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                <div className="flex justify-between text-slate-600"><span>Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
-                                <div className="flex justify-between text-slate-600"><span>Belanja:</span> <span className="font-semibold">− {formatRupiah(t.pengeluaran)}</span></div>
-                                <div className="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>{formatRupiah(calc.hasilBersih)}</span></div>
-                              </div>
-                              <div className="space-y-1 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
-                                <div className="flex justify-between text-amber-900"><span>Kas/Modal (50%):</span> <span className="font-bold">{formatRupiah(calc.kasModalKedai)}</span></div>
-                                <div className="bg-amber-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
-                                  <span>Hak per Pemuda ({t.jumlahPetugas} org):</span>
-                                  <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {t.unit === 'tubing' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                                <div className="flex justify-between text-slate-600"><span>Total Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
-                                <div className="flex justify-between text-amber-800"><span>Kas Bapak (10%):</span> <span className="font-bold">{formatRupiah(calc.kasBapak)}</span></div>
-                              </div>
-                              <div className="space-y-1 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
-                                <div className="bg-blue-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
-                                  <span>Hak per Pemuda ({t.jumlahPetugas} org):</span>
-                                  <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -507,11 +507,11 @@
             )}
           </main>
 
-          {/* MODAL INPUT / EDIT */}
+          {/* MODAL INPUT */}
           {showAddModal && (
             <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
               <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-3">
-                <h3 className="font-bold text-sm text-emerald-800">{editingTx ? 'Edit Laporan Usaha' : 'Input Laporan Baru'}</h3>
+                <h3 className="font-bold text-sm text-emerald-800">Input Laporan Baru</h3>
                 
                 <form onSubmit={handleSaveTransaction} className="space-y-3 text-xs">
                   <div>
@@ -567,13 +567,13 @@
                   )}
 
                   <div>
-                    <label className="font-bold text-slate-500 block mb-1">Catatan</label>
+                    <label className="font-bold text-slate-500 block mb-1">Catatan / Keterangan</label>
                     <input type="text" value={formData.catatan} onChange={(e) => setFormData({...formData, catatan: e.target.value})} placeholder="Contoh: Ramai lancar" className="w-full p-2 rounded-xl border bg-slate-50" />
                   </div>
 
                   <div className="flex gap-2 pt-2">
                     <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 bg-slate-200 py-2 rounded-xl font-bold text-slate-600">Batal</button>
-                    <button type="submit" className="flex-1 bg-emerald-700 text-white py-2 rounded-xl font-bold">Simpan</button>
+                    <button type="submit" className="flex-1 bg-emerald-700 text-white py-2 rounded-xl font-bold">Simpan ke Sheets</button>
                   </div>
                 </form>
               </div>
@@ -583,7 +583,8 @@
       );
     }
 
-    ReactDOM.render(<App />, document.getElementById('root'));
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
