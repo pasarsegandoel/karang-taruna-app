@@ -3,306 +3,587 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kas & Keuangan Karang Taruna</title>
+  <title>Usaha Karang Taruna Segandoel</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel untuk JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-slate-100 text-slate-800 font-sans pb-12">
+<body class="bg-slate-100 text-slate-800 font-sans">
+  <div id="root"></div>
 
-  <!-- Header -->
-  <header class="bg-emerald-800 text-white shadow-md sticky top-0 z-10">
-    <div class="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
-      <div>
-        <h1 class="font-extrabold text-base leading-tight">Usaha Karang Taruna</h1>
-        <p class="text-[11px] text-emerald-200">Transparansi Laporan & Bagi Hasil</p>
-      </div>
-      <button onclick="loadData()" class="bg-emerald-700 hover:bg-emerald-600 text-xs px-3 py-1.5 rounded-xl font-bold transition">
-        🔄 Refresh
-      </button>
-    </div>
-  </header>
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
 
-  <!-- Main Container -->
-  <main class="max-w-md mx-auto p-4 space-y-4">
+    // Helper Format Rupiah
+    const formatRupiah = (number) => {
+      return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        maximumFractionDigits: 0
+      }).format(number || 0);
+    };
 
-    <!-- Status Koneksi -->
-    <div id="status-box" class="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded-xl text-center font-medium">
-      Menghubungkan ke database Google Sheets...
-    </div>
+    // Data Sampel Awal (Bisa ditambah/edit langsung di web)
+    const INITIAL_TRANSACTIONS = [
+      {
+        id: '1',
+        unit: 'pasar',
+        tanggal: '2026-11-08',
+        omset: 1500000,
+        modalAwal: 500000,
+        jumlahPetugas: 5,
+        kasTambahanPersen: 10,
+        catatan: 'Pasar Segandoel Minggu Pagi'
+      },
+      {
+        id: '2',
+        unit: 'kedai',
+        tanggal: '2026-11-07',
+        omset: 450000,
+        pengeluaran: 200000,
+        jumlahPetugas: 2,
+        catatan: 'Kedai Pemuda Sabtu Malam'
+      },
+      {
+        id: '3',
+        unit: 'tubing',
+        tanggal: '2026-11-08',
+        omset: 800000,
+        jumlahPetugas: 3,
+        catatan: 'Persewaan Ban & Pelampung'
+      }
+    ];
 
-    <!-- Form Input Laporan -->
-    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-      <h2 class="font-bold text-sm text-emerald-800 flex items-center gap-1">➕ Input Laporan Baru</h2>
+    export default function App() {
+      const [activeTab, setActiveTab] = useState('laporan'); // 'laporan', 'buku_kas', 'ringkasan'
+      const [filterUnit, setFilterUnit] = useState('semua'); // 'semua', 'pasar', 'kedai', 'tubing'
       
-      <div>
-        <label class="text-[11px] font-bold text-slate-500 block mb-1">Pilih Unit Usaha</label>
-        <select id="input-unit" onchange="toggleUnitForm()" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50 font-medium">
-          <option value="pasar">Pasar Segandoel (Minggu)</option>
-          <option value="kedai">Kedai Pasar Segandoel (Senin-Sabtu)</option>
-          <option value="tubing">River Tubing (Minggu)</option>
-        </select>
-      </div>
+      const [transactions, setTransactions] = useState(() => {
+        const saved = localStorage.getItem('kt_transactions');
+        return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+      });
 
-      <div>
-        <label class="text-[11px] font-bold text-slate-500 block mb-1">Tanggal</label>
-        <input type="date" id="input-tanggal" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-      </div>
+      const [kasBapakOutflow, setKasBapakOutflow] = useState(() => {
+        const saved = localStorage.getItem('kt_kas_out');
+        return saved ? JSON.parse(saved) : [];
+      });
 
-      <div>
-        <label class="text-[11px] font-bold text-slate-500 block mb-1">Total Omset (Rp)</label>
-        <input type="number" id="input-omset" placeholder="Contoh: 1500000" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-      </div>
+      const [copiedId, setCopiedId] = useState(null);
+      const [showAddModal, setShowAddModal] = useState(false);
+      const [editingTx, setEditingTx] = useState(null);
 
-      <!-- Input khusus Pasar -->
-      <div id="field-pasar" class="space-y-3">
-        <div>
-          <label class="text-[11px] font-bold text-slate-500 block mb-1">Modal Awal (Rp)</label>
-          <input type="number" id="input-modal" placeholder="Contoh: 500000" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-        </div>
-        <div>
-          <label class="text-[11px] font-bold text-slate-500 block mb-1">Jumlah Ibu-Ibu Jaga</label>
-          <input type="number" id="input-jumlah-ibu" placeholder="Contoh: 5" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-        </div>
-      </div>
+      const [settings, setSettings] = useState({
+        kasBapakPersen: 10,
+        kasTambahanPasarPersen: 10,
+      });
 
-      <!-- Input khusus Kedai & Tubing -->
-      <div id="field-pengeluaran" class="space-y-3 hidden">
-        <div>
-          <label class="text-[11px] font-bold text-slate-500 block mb-1">Belanja / Pengeluaran (Rp)</label>
-          <input type="number" id="input-belanja" placeholder="Contoh: 100000" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-        </div>
-      </div>
+      const [formData, setFormData] = useState({
+        unit: 'pasar',
+        tanggal: new Date().toISOString().split('T')[0],
+        omset: '',
+        modalAwal: '',
+        pengeluaran: '',
+        jumlahPetugas: '',
+        kasTambahanPersen: 10,
+        catatan: ''
+      });
 
-      <div id="field-petugas" class="space-y-3 hidden">
-        <div>
-          <label class="text-[11px] font-bold text-slate-500 block mb-1">Jumlah Pemuda Jaga</label>
-          <input type="number" id="input-jumlah-pemuda" placeholder="Contoh: 3" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-        </div>
-      </div>
+      // Simpan ke localStorage agar data tidak hilang saat direfresh
+      useEffect(() => {
+        localStorage.setItem('kt_transactions', JSON.stringify(transactions));
+      }, [transactions]);
 
-      <div>
-        <label class="text-[11px] font-bold text-slate-500 block mb-1">Catatan / Keterangan</label>
-        <input type="text" id="input-catatan" placeholder="Contoh: Alhamdulillah ramai lancar" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
-      </div>
+      useEffect(() => {
+        localStorage.setItem('kt_kas_out', JSON.stringify(kasBapakOutflow));
+      }, [kasBapakOutflow]);
 
-      <button onclick="submitData()" id="btn-submit" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 rounded-xl shadow transition">
-        Kirim & Simpan Laporan
-      </button>
-    </div>
+      // Render ikon Lucide
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      });
 
-    <!-- Daftar Rekap Laporan -->
-    <div class="space-y-3">
-      <h2 class="font-bold text-sm text-slate-700 px-1">📋 Rekap Laporan Usaha</h2>
-      <div id="list-container" class="space-y-3">
-        <!-- Card laporan akan muncul di sini -->
-      </div>
-    </div>
-
-  </main>
-
-  <script>
-    // ⚠️ MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI:
-    const APPS_SCRIPT_URL = "PASANG_URL_WEB_APP_APPS_SCRIPT_ANDA_DI_SINI";
-
-    function formatRupiah(num) {
-      return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
-    }
-
-    document.getElementById('input-tanggal').value = new Date().toISOString().split('T')[0];
-
-    function toggleUnitForm() {
-      const unit = document.getElementById('input-unit').value;
-      const fieldPasar = document.getElementById('field-pasar');
-      const fieldPengeluaran = document.getElementById('field-pengeluaran');
-      const fieldPetugas = document.getElementById('field-petugas');
-
-      if (unit === 'pasar') {
-        fieldPasar.classList.remove('hidden');
-        fieldPengeluaran.classList.add('hidden');
-        fieldPetugas.classList.add('hidden');
-      } else if (unit === 'kedai') {
-        fieldPasar.classList.add('hidden');
-        fieldPengeluaran.classList.remove('hidden');
-        fieldPetugas.classList.remove('hidden');
-      } else if (unit === 'tubing') {
-        fieldPasar.classList.add('hidden');
-        fieldPengeluaran.classList.add('hidden');
-        fieldPetugas.classList.remove('hidden');
-      }
-    }
-
-    function loadData() {
-      if (APPS_SCRIPT_URL.includes("PASANG_URL_WEB_APP")) {
-        document.getElementById('status-box').innerHTML = "⚠️ Isikan URL Apps Script di dalam kode index.html lebih dulu!";
-        return;
-      }
-
-      document.getElementById('status-box').innerHTML = "Memuat data terbaru dari Google Sheets...";
-      fetch(`${APPS_SCRIPT_URL}?action=getData`)
-        .then(res => res.json())
-        .then(data => {
-          document.getElementById('status-box').innerHTML = "✅ Data Berhasil Disinkronkan";
-          renderList(data);
-        })
-        .catch(err => {
-          document.getElementById('status-box').innerHTML = "❌ Gagal memuat data. Periksa URL Apps Script.";
-        });
-    }
-
-    function renderList(data) {
-      const container = document.getElementById('list-container');
-      container.innerHTML = "";
-
-      let allTx = [];
-      if (data.pasar) data.pasar.forEach(item => allTx.push({ ...item, unit: 'pasar' }));
-      if (data.kedai) data.kedai.forEach(item => allTx.push({ ...item, unit: 'kedai' }));
-      if (data.tubing) data.tubing.forEach(item => allTx.push({ ...item, unit: 'tubing' }));
-
-      allTx.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
-
-      if (allTx.length === 0) {
-        container.innerHTML = `<div class="bg-white p-4 rounded-2xl text-center text-xs text-slate-500">Belum ada catatan laporan tersimpan.</div>`;
-        return;
-      }
-
-      allTx.forEach(t => {
-        let card = document.createElement('div');
-        card.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-2 text-xs";
-        let unitName = "";
-        let badgeColor = "";
-        let calcHtml = "";
+      const calculateTx = (t) => {
+        const omset = Number(t.omset) || 0;
+        const jumlahPetugas = Math.max(1, Number(t.jumlahPetugas) || 1);
 
         if (t.unit === 'pasar') {
-          unitName = "Pasar Segandoel (Ibu-Ibu)";
-          badgeColor = "bg-emerald-100 text-emerald-800";
-          let omset = Number(t.omset) || 0;
-          let modal = Number(t.modal) || 0;
-          let bersih = Math.max(0, omset - modal);
-          let kasBapak = bersih * 0.10;
-          let kasTambahan = bersih * 0.10;
-          let sisaIbu = Math.max(0, bersih - kasBapak - kasTambahan);
-          let petugas = Number(t.jumlahIbu) || 1;
-          let hakPerOrang = sisaIbu / petugas;
-
-          calcHtml = `
-            <div class="bg-slate-50 p-2 rounded-xl space-y-1">
-              <div class="flex justify-between"><span>Omset:</span> <span class="font-bold">${formatRupiah(omset)}</span></div>
-              <div class="flex justify-between"><span>Modal Awal:</span> <span class="font-bold">− ${formatRupiah(modal)}</span></div>
-              <div class="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>${formatRupiah(bersih)}</span></div>
-              <div class="text-[11px] text-slate-500 pt-1">
-                • Kas Bapak (10%): ${formatRupiah(kasBapak)}<br>
-                • Kas Tambahan (10%): ${formatRupiah(kasTambahan)}<br>
-                👥 <b>Hak per Ibu (${petugas} org): ${formatRupiah(hakPerOrang)}</b>
-              </div>
-            </div>`;
+          const modalAwal = Number(t.modalAwal) || 0;
+          const kasTambahanPersen = Number(t.kasTambahanPersen ?? settings.kasTambahanPasarPersen);
+          const hasilBersih = Math.max(0, omset - modalAwal);
+          const kasBapak = hasilBersih * (settings.kasBapakPersen / 100);
+          const kasTambahan = hasilBersih * (kasTambahanPersen / 100);
+          const sisaBagiIbu = Math.max(0, hasilBersih - kasBapak - kasTambahan);
+          const hakPerPetugas = sisaBagiIbu / jumlahPetugas;
+          return { hasilBersih, kasBapak, kasTambahan, sisaBagiIbu, hakPerPetugas };
         } else if (t.unit === 'kedai') {
-          unitName = "Kedai Pasar Segandoel";
-          badgeColor = "bg-amber-100 text-amber-800";
-          let omset = Number(t.omset) || 0;
-          let belanja = Number(t.belanja) || 0;
-          let bersih = Math.max(0, omset - belanja);
-          let kasModal = bersih * 0.50;
-          let bagiPemuda = bersih * 0.50;
-          let petugas = Number(t.jumlahPemuda) || 1;
-          let hakPerOrang = bagiPemuda / petugas;
-
-          calcHtml = `
-            <div class="bg-slate-50 p-2 rounded-xl space-y-1">
-              <div class="flex justify-between"><span>Omset:</span> <span class="font-bold">${formatRupiah(omset)}</span></div>
-              <div class="flex justify-between"><span>Belanja:</span> <span class="font-bold">− ${formatRupiah(belanja)}</span></div>
-              <div class="flex justify-between text-amber-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>${formatRupiah(bersih)}</span></div>
-              <div class="text-[11px] text-slate-500 pt-1">
-                • Kas/Modal (50%): ${formatRupiah(kasModal)}<br>
-                👥 <b>Hak per Pemuda (${petugas} org): ${formatRupiah(hakPerOrang)}</b>
-              </div>
-            </div>`;
+          const pengeluaran = Number(t.pengeluaran) || 0;
+          const hasilBersih = Math.max(0, omset - pengeluaran);
+          const kasModalKedai = hasilBersih * 0.50;
+          const bagiHasilPemuda = hasilBersih * 0.50;
+          const hakPerPetugas = bagiHasilPemuda / jumlahPetugas;
+          return { hasilBersih, kasModalKedai, bagiHasilPemuda, hakPerPetugas };
         } else if (t.unit === 'tubing') {
-          unitName = "River Tubing";
-          badgeColor = "bg-blue-100 text-blue-800";
-          let omset = Number(t.omset) || 0;
-          let kasBapak = omset * 0.10;
-          let sisa = omset - kasBapak;
-          let kasTubing = sisa * 0.50;
-          let bagiPemuda = sisa * 0.50;
-          let petugas = Number(t.jumlahPemuda) || 1;
-          let hakPerOrang = bagiPemuda / petugas;
-
-          calcHtml = `
-            <div class="bg-slate-50 p-2 rounded-xl space-y-1">
-              <div class="flex justify-between"><span>Total Omset:</span> <span class="font-bold">${formatRupiah(omset)}</span></div>
-              <div class="text-[11px] text-slate-500 pt-1">
-                • Kas Bapak (10%): ${formatRupiah(kasBapak)}<br>
-                • Kas Tubing (50% sisa): ${formatRupiah(kasTubing)}<br>
-                👥 <b>Hak per Pemuda (${petugas} org): ${formatRupiah(hakPerOrang)}</b>
-              </div>
-            </div>`;
+          const kasBapak = omset * (settings.kasBapakPersen / 100);
+          const sisaHasil = omset - kasBapak;
+          const kasTubing = sisaHasil * 0.50;
+          const bagiHasilPemuda = sisaHasil * 0.50;
+          const hakPerPetugas = bagiHasilPemuda / jumlahPetugas;
+          return { kasBapak, sisaHasil, kasTubing, bagiHasilPemuda, hakPerPetugas };
         }
+        return {};
+      };
 
-        card.innerHTML = `
-          <div class="flex justify-between items-center">
-            <span class="${badgeColor} px-2 py-0.5 rounded-md font-bold text-[10px]">${unitName}</span>
-            <span class="text-slate-400">${t.tanggal}</span>
-          </div>
-          ${t.catatan ? `<p class="italic text-slate-600">"${t.catatan}"</p>` : ''}
-          ${calcHtml}
-        `;
-        container.appendChild(card);
-      });
+      const kasBapakSummary = useMemo(() => {
+        let totalMasuk = 0;
+        transactions.forEach(t => {
+          const calc = calculateTx(t);
+          if (t.unit === 'pasar' || t.unit === 'tubing') {
+            totalMasuk += (calc.kasBapak || 0);
+          }
+        });
+        let totalKeluar = kasBapakOutflow.reduce((acc, k) => acc + (Number(k.nominal) || 0), 0);
+        return { totalMasuk, totalKeluar, saldoAkhir: totalMasuk - totalKeluar };
+      }, [transactions, kasBapakOutflow, settings]);
+
+      const globalSummary = useMemo(() => {
+        let totalOmset = 0;
+        let totalModalUsahaAcc = 0;
+        let totalBagiHasilWarga = 0;
+
+        transactions.forEach(t => {
+          const calc = calculateTx(t);
+          totalOmset += Number(t.omset) || 0;
+          if (t.unit === 'pasar') {
+            totalModalUsahaAcc += (Number(t.modalAwal) || 0) + (calc.kasTambahan || 0);
+            totalBagiHasilWarga += calc.sisaBagiIbu || 0;
+          } else if (t.unit === 'kedai') {
+            totalModalUsahaAcc += calc.kasModalKedai || 0;
+            totalBagiHasilWarga += calc.bagiHasilPemuda || 0;
+          } else if (t.unit === 'tubing') {
+            totalModalUsahaAcc += calc.kasTubing || 0;
+            totalBagiHasilWarga += calc.bagiHasilPemuda || 0;
+          }
+        });
+
+        return {
+          totalOmset,
+          totalKasBapakSaldo: kasBapakSummary.saldoAkhir,
+          totalModalUsahaAcc,
+          totalBagiHasilWarga,
+          totalTransaksi: transactions.length
+        };
+      }, [transactions, kasBapakSummary]);
+
+      const handleSaveTransaction = (e) => {
+        e.preventDefault();
+        const payload = {
+          id: editingTx ? editingTx.id : Date.now().toString(),
+          unit: formData.unit,
+          tanggal: formData.tanggal,
+          omset: Number(formData.omset) || 0,
+          modalAwal: Number(formData.modalAwal) || 0,
+          pengeluaran: Number(formData.pengeluaran) || 0,
+          jumlahPetugas: Math.max(1, Number(formData.jumlahPetugas) || 1),
+          kasTambahanPersen: Number(formData.kasTambahanPersen) || 10,
+          catatan: formData.catatan || ''
+        };
+
+        if (editingTx) {
+          setTransactions(transactions.map(t => t.id === editingTx.id ? payload : t));
+        } else {
+          setTransactions([payload, ...transactions]);
+        }
+        setShowAddModal(false);
+        setEditingTx(null);
+        resetFormData();
+      };
+
+      const handleDeleteTx = (id) => {
+        if (confirm("Yakin ingin menghapus catatan ini?")) {
+          setTransactions(transactions.filter(t => t.id !== id));
+        }
+      };
+
+      const resetFormData = () => {
+        setFormData({
+          unit: 'pasar',
+          tanggal: new Date().toISOString().split('T')[0],
+          omset: '',
+          modalAwal: '',
+          pengeluaran: '',
+          jumlahPetugas: '',
+          kasTambahanPersen: 10,
+          catatan: ''
+        });
+      };
+
+      const openEditModal = (t) => {
+        setEditingTx(t);
+        setFormData({
+          unit: t.unit || 'pasar',
+          tanggal: t.tanggal || new Date().toISOString().split('T')[0],
+          omset: t.omset || '',
+          modalAwal: t.modalAwal || '',
+          pengeluaran: t.pengeluaran || '',
+          jumlahPetugas: t.jumlahPetugas || 1,
+          kasTambahanPersen: t.kasTambahanPersen ?? 10,
+          catatan: t.catatan || ''
+        });
+        setShowAddModal(true);
+      };
+
+      const generateWAText = (t) => {
+        const calc = calculateTx(t);
+        let text = `📢 *LAPORAN KEUANGAN USAHA KARANG TARUNA*\n`;
+        text += `📅 *Tanggal:* ${t.tanggal}\n`;
+        if (t.unit === 'pasar') {
+          text += `🏪 *Unit:* Pasar Segandoel (Ibu-Ibu)\n`;
+          if (t.catatan) text += `📝 *Ket:* ${t.catatan}\n`;
+          text += `---------------------------------------\n`;
+          text += `💰 Omset: ${formatRupiah(t.omset)}\n`;
+          text += `💵 Modal Awal: ${formatRupiah(t.modalAwal)}\n`;
+          text += `✨ *Hasil Bersih:* ${formatRupiah(calc.hasilBersih)}\n\n`;
+          text += `*PEMBAGIAN:* \n`;
+          text += `1. Kas Bapak (10%): ${formatRupiah(calc.kasBapak)}\n`;
+          text += `2. Kas Tambahan (10%): ${formatRupiah(calc.kasTambahan)}\n`;
+          text += `👥 *Hak per Ibu (${t.jumlahPetugas} org):* *${formatRupiah(calc.hakPerPetugas)}*\n`;
+        } else if (t.unit === 'kedai') {
+          text += `☕ *Unit:* Kedai Pemuda\n`;
+          if (t.catatan) text += `📝 *Ket:* ${t.catatan}\n`;
+          text += `---------------------------------------\n`;
+          text += `💰 Omset: ${formatRupiah(t.omset)}\n`;
+          text += `🛒 Belanja: ${formatRupiah(t.pengeluaran)}\n`;
+          text += `✨ *Hasil Bersih:* ${formatRupiah(calc.hasilBersih)}\n\n`;
+          text += `👥 *Hak per Pemuda (${t.jumlahPetugas} org):* *${formatRupiah(calc.hakPerPetugas)}*\n`;
+        } else if (t.unit === 'tubing') {
+          text += `🌊 *Unit:* River Tubing\n`;
+          if (t.catatan) text += `📝 *Ket:* ${t.catatan}\n`;
+          text += `---------------------------------------\n`;
+          text += `💰 Omset: ${formatRupiah(t.omset)}\n`;
+          text += `1. Kas Bapak (10%): ${formatRupiah(calc.kasBapak)}\n`;
+          text += `👥 *Hak per Pemuda (${t.jumlahPetugas} org):* *${formatRupiah(calc.hakPerPetugas)}*\n`;
+        }
+        return text;
+      };
+
+      const handleCopyWA = (t) => {
+        const text = generateWAText(t);
+        navigator.clipboard.writeText(text);
+        setCopiedId(t.id);
+        setTimeout(() => setCopiedId(null), 2500);
+      };
+
+      const filteredList = useMemo(() => {
+        if (filterUnit === 'semua') return transactions;
+        return transactions.filter(t => t.unit === filterUnit);
+      }, [transactions, filterUnit]);
+
+      return (
+        <div className="min-h-screen bg-slate-100 text-slate-800 pb-20">
+          {/* Header */}
+          <header className="bg-emerald-800 text-white shadow-lg sticky top-0 z-30">
+            <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="bg-amber-400 p-2 rounded-xl text-emerald-950 font-bold shadow">
+                  🏪
+                </div>
+                <div>
+                  <h1 className="font-extrabold text-base leading-tight">Usaha Karang Taruna</h1>
+                  <p className="text-[11px] text-emerald-200">✨ Transparansi Real-Time Multi-User</p>
+                </div>
+              </div>
+              <span className="bg-emerald-900/80 text-emerald-200 border border-emerald-600 text-[10px] font-medium px-2 py-1 rounded-full">
+                🟢 Live Sync
+              </span>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="max-w-3xl mx-auto px-2 flex border-t border-emerald-700/80">
+              <button
+                onClick={() => setActiveTab('laporan')}
+                className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 border-b-2 transition ${
+                  activeTab === 'laporan' ? 'border-amber-400 text-amber-300 bg-emerald-900/40' : 'border-transparent text-emerald-100'
+                }`}
+              >
+                📝 Catatan Transaksi
+              </button>
+              <button
+                onClick={() => setActiveTab('buku_kas')}
+                className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 border-b-2 transition ${
+                  activeTab === 'buku_kas' ? 'border-amber-400 text-amber-300 bg-emerald-900/40' : 'border-transparent text-emerald-100'
+                }`}
+              >
+                📖 Buku Kas Bapak-Bapak
+              </button>
+              <button
+                onClick={() => setActiveTab('ringkasan')}
+                className={`flex-1 py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 border-b-2 transition ${
+                  activeTab === 'ringkasan' ? 'border-amber-400 text-amber-300 bg-emerald-900/40' : 'border-transparent text-emerald-100'
+                }`}
+              >
+                📊 Total Rekap Usaha
+              </button>
+            </div>
+          </header>
+
+          <main className="max-w-3xl mx-auto px-4 pt-4 space-y-4">
+            {/* Stat Bar */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Omset</span>
+                <p className="text-base md:text-lg font-black text-slate-800">{formatRupiah(globalSummary.totalOmset)}</p>
+              </div>
+              <div className="bg-amber-50 p-3.5 rounded-2xl shadow-sm border border-amber-200/80">
+                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">🐷 Saldo Kas Bapak</span>
+                <p className="text-base md:text-lg font-black text-amber-900">{formatRupiah(kasBapakSummary.saldoAkhir)}</p>
+              </div>
+              <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Modal Usaha Acc</span>
+                <p className="text-base md:text-lg font-black text-blue-700">{formatRupiah(globalSummary.totalModalUsahaAcc)}</p>
+              </div>
+              <div className="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Distribusikan Warga</span>
+                <p className="text-base md:text-lg font-black text-emerald-700">{formatRupiah(globalSummary.totalBagiHasilWarga)}</p>
+              </div>
+            </div>
+
+            {/* TAB 1: LAPORAN */}
+            {activeTab === 'laporan' && (
+              <div className="space-y-3">
+                <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                    <button onClick={() => setFilterUnit('semua')} className={`text-xs px-3 py-1.5 rounded-xl font-bold transition ${filterUnit === 'semua' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                      Semua ({transactions.length})
+                    </button>
+                    <button onClick={() => setFilterUnit('pasar')} className={`text-xs px-3 py-1.5 rounded-xl font-bold transition ${filterUnit === 'pasar' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800'}`}>
+                      Pasar Segandoel
+                    </button>
+                    <button onClick={() => setFilterUnit('kedai')} className={`text-xs px-3 py-1.5 rounded-xl font-bold transition ${filterUnit === 'kedai' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800'}`}>
+                      Kedai Pemuda
+                    </button>
+                    <button onClick={() => setFilterUnit('tubing')} className={`text-xs px-3 py-1.5 rounded-xl font-bold transition ${filterUnit === 'tubing' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-800'}`}>
+                      River Tubing
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => { setEditingTx(null); resetFormData(); setShowAddModal(true); }}
+                    className="w-full sm:w-auto bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 shadow transition"
+                  >
+                    ➕ Input / Catat Laporan
+                  </button>
+                </div>
+
+                {/* List Transaksi */}
+                <div className="space-y-3">
+                  {filteredList.map((t) => {
+                    const calc = calculateTx(t);
+                    return (
+                      <div key={t.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="bg-slate-50 border-b border-slate-100 px-4 py-2.5 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {t.unit === 'pasar' && <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-md">Pasar Segandoel</span>}
+                            {t.unit === 'kedai' && <span className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-md">Kedai Pemuda</span>}
+                            {t.unit === 'tubing' && <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-md">River Tubing</span>}
+                            <span className="text-xs text-slate-500">{t.tanggal}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleCopyWA(t)}
+                              className={`text-xs px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 transition ${copiedId === t.id ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}
+                            >
+                              {copiedId === t.id ? '✓ Disalin' : '📋 Salin WA'}
+                            </button>
+                            <button onClick={() => openEditModal(t)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-lg border border-slate-300">
+                              ✏️ Edit
+                            </button>
+                            <button onClick={() => handleDeleteTx(t.id)} className="text-slate-400 hover:text-red-500 p-1">
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="p-3.5 space-y-2.5 text-xs">
+                          {t.catatan && <p className="text-slate-600 italic bg-slate-50 p-2 rounded-lg">"{t.catatan}"</p>}
+
+                          {t.unit === 'pasar' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                <div className="flex justify-between text-slate-600"><span>Total Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
+                                <div className="flex justify-between text-slate-600"><span>Modal Awal:</span> <span className="font-semibold">− {formatRupiah(t.modalAwal)}</span></div>
+                                <div className="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>{formatRupiah(calc.hasilBersih)}</span></div>
+                              </div>
+                              <div className="space-y-1 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100">
+                                <div className="flex justify-between text-amber-800"><span>Kas Bapak (10%):</span> <span className="font-bold">{formatRupiah(calc.kasBapak)}</span></div>
+                                <div className="flex justify-between text-blue-800"><span>Kas Tambahan (10%):</span> <span className="font-bold">{formatRupiah(calc.kasTambahan)}</span></div>
+                                <div className="bg-emerald-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
+                                  <span>Hak per Ibu ({t.jumlahPetugas} org):</span>
+                                  <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {t.unit === 'kedai' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                <div className="flex justify-between text-slate-600"><span>Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
+                                <div className="flex justify-between text-slate-600"><span>Belanja:</span> <span className="font-semibold">− {formatRupiah(t.pengeluaran)}</span></div>
+                                <div className="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>{formatRupiah(calc.hasilBersih)}</span></div>
+                              </div>
+                              <div className="space-y-1 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
+                                <div className="flex justify-between text-amber-900"><span>Kas/Modal (50%):</span> <span className="font-bold">{formatRupiah(calc.kasModalKedai)}</span></div>
+                                <div className="bg-amber-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
+                                  <span>Hak per Pemuda ({t.jumlahPetugas} org):</span>
+                                  <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {t.unit === 'tubing' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                                <div className="flex justify-between text-slate-600"><span>Total Omset:</span> <span className="font-semibold">{formatRupiah(t.omset)}</span></div>
+                                <div className="flex justify-between text-amber-800"><span>Kas Bapak (10%):</span> <span className="font-bold">{formatRupiah(calc.kasBapak)}</span></div>
+                              </div>
+                              <div className="space-y-1 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100">
+                                <div className="bg-blue-600 text-white p-2 rounded-lg mt-1 flex justify-between items-center font-bold">
+                                  <span>Hak per Pemuda ({t.jumlahPetugas} org):</span>
+                                  <span className="text-sm">{formatRupiah(calc.hakPerPetugas)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: BUKU KAS BAPAK */}
+            {activeTab === 'buku_kas' && (
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <h2 className="font-bold text-sm text-slate-700">📖 Buku Kas Khusus Bapak-Bapak</h2>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-50 p-3 rounded-xl">
+                    <span className="text-[10px] text-slate-400 block">Total Masuk</span>
+                    <span className="font-bold text-emerald-700 text-sm">{formatRupiah(kasBapakSummary.totalMasuk)}</span>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl">
+                    <span className="text-[10px] text-slate-400 block">Total Keluar</span>
+                    <span className="font-bold text-red-600 text-sm">{formatRupiah(kasBapakSummary.totalKeluar)}</span>
+                  </div>
+                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                    <span className="text-[10px] text-amber-700 block font-bold">Saldo Akhir</span>
+                    <span className="font-black text-amber-900 text-sm">{formatRupiah(kasBapakSummary.saldoAkhir)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: RINGKASAN */}
+            {activeTab === 'ringkasan' && (
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3 text-xs">
+                <h2 className="font-bold text-sm text-slate-700">📊 Total Rekapitulasi Keseluruhan Usaha</h2>
+                <div className="space-y-2">
+                  <div className="flex justify-between p-2 bg-slate-50 rounded-lg"><span>Total Keseluruhan Omset:</span> <span className="font-bold">{formatRupiah(globalSummary.totalOmset)}</span></div>
+                  <div className="flex justify-between p-2 bg-slate-50 rounded-lg"><span>Akumulasi Saldo Kas Bapak:</span> <span className="font-bold">{formatRupiah(globalSummary.totalKasBapakSaldo)}</span></div>
+                  <div className="flex justify-between p-2 bg-slate-50 rounded-lg"><span>Akumulasi Modal Usaha:</span> <span className="font-bold">{formatRupiah(globalSummary.totalModalUsahaAcc)}</span></div>
+                  <div className="flex justify-between p-2 bg-emerald-50 text-emerald-900 rounded-lg font-bold"><span>Total Bagi Hasil ke Warga:</span> <span>{formatRupiah(globalSummary.totalBagiHasilWarga)}</span></div>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* MODAL INPUT / EDIT */}
+          {showAddModal && (
+            <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-3">
+                <h3 className="font-bold text-sm text-emerald-800">{editingTx ? 'Edit Laporan Usaha' : 'Input Laporan Baru'}</h3>
+                
+                <form onSubmit={handleSaveTransaction} className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-500 block mb-1">Unit Usaha</label>
+                    <select value={formData.unit} onChange={(e) => setFormData({...formData, unit: e.target.value})} className="w-full p-2 rounded-xl border bg-slate-50">
+                      <option value="pasar">Pasar Segandoel (Ibu-Ibu)</option>
+                      <option value="kedai">Kedai Pemuda</option>
+                      <option value="tubing">River Tubing</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-500 block mb-1">Tanggal</label>
+                    <input type="date" value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} className="w-full p-2 rounded-xl border bg-slate-50" required />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-500 block mb-1">Total Omset (Rp)</label>
+                    <input type="number" value={formData.omset} onChange={(e) => setFormData({...formData, omset: e.target.value})} placeholder="Contoh: 1500000" className="w-full p-2 rounded-xl border bg-slate-50" required />
+                  </div>
+
+                  {formData.unit === 'pasar' && (
+                    <>
+                      <div>
+                        <label className="font-bold text-slate-500 block mb-1">Modal Awal (Rp)</label>
+                        <input type="number" value={formData.modalAwal} onChange={(e) => setFormData({...formData, modalAwal: e.target.value})} placeholder="Contoh: 500000" className="w-full p-2 rounded-xl border bg-slate-50" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block mb-1">Jumlah Ibu-Ibu Jaga</label>
+                        <input type="number" value={formData.jumlahPetugas} onChange={(e) => setFormData({...formData, jumlahPetugas: e.target.value})} placeholder="5" className="w-full p-2 rounded-xl border bg-slate-50" />
+                      </div>
+                    </>
+                  )}
+
+                  {formData.unit === 'kedai' && (
+                    <>
+                      <div>
+                        <label className="font-bold text-slate-500 block mb-1">Belanja / Pengeluaran (Rp)</label>
+                        <input type="number" value={formData.pengeluaran} onChange={(e) => setFormData({...formData, pengeluaran: e.target.value})} placeholder="Contoh: 200000" className="w-full p-2 rounded-xl border bg-slate-50" />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-500 block mb-1">Jumlah Pemuda Jaga</label>
+                        <input type="number" value={formData.jumlahPetugas} onChange={(e) => setFormData({...formData, jumlahPetugas: e.target.value})} placeholder="2" className="w-full p-2 rounded-xl border bg-slate-50" />
+                      </div>
+                    </>
+                  )}
+
+                  {formData.unit === 'tubing' && (
+                    <div>
+                      <label className="font-bold text-slate-500 block mb-1">Jumlah Pemuda Jaga</label>
+                      <input type="number" value={formData.jumlahPetugas} onChange={(e) => setFormData({...formData, jumlahPetugas: e.target.value})} placeholder="3" className="w-full p-2 rounded-xl border bg-slate-50" />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="font-bold text-slate-500 block mb-1">Catatan</label>
+                    <input type="text" value={formData.catatan} onChange={(e) => setFormData({...formData, catatan: e.target.value})} placeholder="Contoh: Ramai lancar" className="w-full p-2 rounded-xl border bg-slate-50" />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 bg-slate-200 py-2 rounded-xl font-bold text-slate-600">Batal</button>
+                    <button type="submit" className="flex-1 bg-emerald-700 text-white py-2 rounded-xl font-bold">Simpan</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
     }
 
-    function submitData() {
-      if (APPS_SCRIPT_URL.includes("PASANG_URL_WEB_APP")) {
-        alert("Harap pasang URL Web App Apps Script milik Anda di kode!");
-        return;
-      }
-
-      const unit = document.getElementById('input-unit').value;
-      const tanggal = document.getElementById('input-tanggal').value;
-      const omset = document.getElementById('input-omset').value;
-      const catatan = document.getElementById('input-catatan').value;
-
-      if (!omset || !tanggal) {
-        alert("Tanggal dan Omset wajib diisi!");
-        return;
-      }
-
-      let payload = { tanggal, omset: Number(omset), catatan };
-
-      if (unit === 'pasar') {
-        payload.modal = Number(document.getElementById('input-modal').value) || 0;
-        payload.pengeluaran = 0;
-        payload.jumlahIbu = Number(document.getElementById('input-jumlah-ibu').value) || 1;
-      } else if (unit === 'kedai') {
-        payload.belanja = Number(document.getElementById('input-belanja').value) || 0;
-        payload.jumlahPemuda = Number(document.getElementById('input-jumlah-pemuda').value) || 1;
-      } else if (unit === 'tubing') {
-        payload.pengeluaran = 0;
-        payload.jumlahPemuda = Number(document.getElementById('input-jumlah-pemuda').value) || 1;
-      }
-
-      const btn = document.getElementById('btn-submit');
-      btn.innerText = "Mengirim...";
-      btn.disabled = true;
-
-      const actionName = unit === 'pasar' ? 'addPasar' : unit === 'kedai' ? 'addKedai' : 'addTubing';
-
-      fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: actionName, payload })
-      }).then(() => {
-        alert("Laporan berhasil tersimpan ke Google Sheets!");
-        btn.innerText = "Kirim & Simpan Laporan";
-        btn.disabled = false;
-        loadData();
-      }).catch(err => {
-        alert("Gagal mengirim laporan: " + err);
-        btn.innerText = "Kirim & Simpan Laporan";
-        btn.disabled = false;
-      });
-    }
-
-    window.onload = loadData;
+    ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
 </html>
