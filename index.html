@@ -1,8 +1,316 @@
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvMZ82Ar3jSv8rDHDNpGsGjKIgE3WkGN0f3d7eiBnIc614YTsnjet2GPmFxuUwII8lwA/exec";
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kas & Keuangan Karang Taruna</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans pb-12">
 
-fetch(`${APPS_SCRIPT_URL}?action=getData`)
-  .then(res => res.json())
-  .then(data => {
-    console.log("Data dari Spreadsheet:", data);
-    // Tampilkan data ke halaman web Anda
-  });
+  <!-- Header -->
+  <header class="bg-emerald-800 text-white shadow-md sticky top-0 z-10">
+    <div class="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
+      <div>
+        <h1 class="font-extrabold text-base leading-tight">Usaha Karang Taruna</h1>
+        <p class="text-[11px] text-emerald-200">Transparansi Laporan & Bagi Hasil</p>
+      </div>
+      <button onclick="loadData()" class="bg-emerald-700 hover:bg-emerald-600 text-xs px-3 py-1.5 rounded-xl font-bold transition">
+        🔄 Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-md mx-auto p-4 space-y-4">
+
+    <!-- Status Koneksi -->
+    <div id="status-box" class="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded-xl text-center font-medium">
+      Menghubungkan ke database Google Sheets...
+    </div>
+
+    <!-- Form Input Laporan -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+      <h2 class="font-bold text-sm text-emerald-800 flex items-center gap-1">➕ Input Laporan Baru</h2>
+      
+      <div>
+        <label class="text-[11px] font-bold text-slate-500 block mb-1">Pilih Unit Usaha</label>
+        <select id="input-unit" onchange="toggleUnitForm()" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50 font-medium">
+          <option value="pasar">Pasar Segandoel (Minggu)</option>
+          <option value="kedai">Kedai Pasar Segandoel (Senin-Sabtu)</option>
+          <option value="tubing">River Tubing (Minggu)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="text-[11px] font-bold text-slate-500 block mb-1">Tanggal</label>
+        <input type="date" id="input-tanggal" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+      </div>
+
+      <div>
+        <label class="text-[11px] font-bold text-slate-500 block mb-1">Total Omset (Rp)</label>
+        <input type="number" id="input-omset" placeholder="Contoh: 1500000" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+      </div>
+
+      <!-- Input khusus Pasar -->
+      <div id="field-pasar" class="space-y-3">
+        <div>
+          <label class="text-[11px] font-bold text-slate-500 block mb-1">Modal Awal (Rp)</label>
+          <input type="number" id="input-modal" placeholder="Contoh: 500000" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+        </div>
+        <div>
+          <label class="text-[11px] font-bold text-slate-500 block mb-1">Jumlah Ibu-Ibu Jaga</label>
+          <input type="number" id="input-jumlah-ibu" placeholder="Contoh: 5" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+        </div>
+      </div>
+
+      <!-- Input khusus Kedai & Tubing (Disembunyikan awalnya jika bukan pilihan) -->
+      <div id="field-pengeluaran" class="space-y-3 hidden">
+        <div>
+          <label class="text-[11px] font-bold text-slate-500 block mb-1">Belanja / Pengeluaran (Rp)</label>
+          <input type="number" id="input-belanja" placeholder="Contoh: 100000" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+        </div>
+      </div>
+
+      <div id="field-petugas" class="space-y-3 hidden">
+        <div>
+          <label class="text-[11px] font-bold text-slate-500 block mb-1">Jumlah Pemuda Jaga</label>
+          <input type="number" id="input-jumlah-pemuda" placeholder="Contoh: 3" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+        </div>
+      </div>
+
+      <div>
+        <label class="text-[11px] font-bold text-slate-500 block mb-1">Catatan / Keterangan</label>
+        <input type="text" id="input-catatan" placeholder="Contoh: Alhamdulillah ramai lancar" class="w-full text-xs p-2 rounded-xl border border-slate-300 bg-slate-50">
+      </div>
+
+      <button onclick="submitData()" id="btn-submit" class="w-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 rounded-xl shadow transition">
+        Kirim & Simpan Laporan
+      </button>
+    </div>
+
+    <!-- Daftar Rekap Laporan -->
+    <div class="space-y-3">
+      <h2 class="font-bold text-sm text-slate-700 px-1">📋 Rekap Laporan Usaha</h2>
+      <div id="list-container" class="space-y-3">
+        <!-- Card laporan akan muncul di sini secara otomatis -->
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // ⚠️ MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI:
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvMZ82Ar3jSv8rDHDNpGsGjKIgE3WkGN0f3d7eiBnIc614YTsnjet2GPmFxuUwII8lwA/exec";
+
+    function formatRupiah(num) {
+      return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
+    }
+
+    // Set tanggal default hari ini
+    document.getElementById('input-tanggal').value = new Date().toISOString().split('T')[0];
+
+    function toggleUnitForm() {
+      const unit = document.getElementById('input-unit').value;
+      const fieldPasar = document.getElementById('field-pasar');
+      const fieldPengeluaran = document.getElementById('field-pengeluaran');
+      const fieldPetugas = document.getElementById('field-petugas');
+
+      if (unit === 'pasar') {
+        fieldPasar.classList.remove('hidden');
+        fieldPengeluaran.classList.add('hidden');
+        fieldPetugas.classList.add('hidden');
+      } else if (unit === 'kedai') {
+        fieldPasar.classList.add('hidden');
+        fieldPengeluaran.classList.remove('hidden');
+        fieldPetugas.classList.remove('hidden');
+      } else if (unit === 'tubing') {
+        fieldPasar.classList.add('hidden');
+        fieldPengeluaran.classList.add('hidden');
+        fieldPetugas.classList.remove('hidden');
+      }
+    }
+
+    let globalData = null;
+
+    function loadData() {
+      if (APPS_SCRIPT_URL.includes("GANTI_DENGAN_URL")) {
+        document.getElementById('status-box').innerHTML = "⚠️ URL Apps Script belum diisi di dalam kode index.html!";
+        return;
+      }
+
+      document.getElementById('status-box').innerHTML = "Memuat data terbaru...";
+      fetch(`${APPS_SCRIPT_URL}?action=getData`)
+        .then(res => res.json())
+        .then(data => {
+          globalData = data;
+          document.getElementById('status-box').innerHTML = "✅ Data Berhasil Disinkronkan dengan Google Sheets";
+          renderList(data);
+        })
+        .catch(err => {
+          document.getElementById('status-box').innerHTML = "❌ Gagal memuat data. Periksa koneksi/URL.";
+          console.error(err);
+        });
+    }
+
+    function renderList(data) {
+      const container = document.getElementById('list-container');
+      container.innerHTML = "";
+
+      let allTx = [];
+      if (data.pasar) data.pasar.forEach(item => allTx.push({ ...item, unit: 'pasar' }));
+      if (data.kedai) data.kedai.forEach(item => allTx.push({ ...item, unit: 'kedai' }));
+      if (data.tubing) data.tubing.forEach(item => allTx.push({ ...item, unit: 'tubing' }));
+
+      // Urutkan dari tanggal terbaru
+      allTx.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+      if (allTx.length === 0) {
+        container.innerHTML = `<div class="bg-white p-4 rounded-2xl text-center text-xs text-slate-500">Belum ada data laporan tersimpan.</div>`;
+        return;
+      }
+
+      allTx.forEach(t => {
+        let card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-2 text-xs";
+        
+        let unitName = "";
+        let badgeColor = "";
+        let calcHtml = "";
+
+        if (t.unit === 'pasar') {
+          unitName = "Pasar Segandoel (Ibu-Ibu)";
+          badgeColor = "bg-emerald-100 text-emerald-800";
+          let omset = Number(t.omset) || 0;
+          let modal = Number(t.modal) || 0;
+          let bersih = Math.max(0, omset - modal);
+          let kasBapak = bersih * 0.10;
+          let kasTambahan = bersih * 0.10;
+          let sisaIbu = Math.max(0, bersih - kasBapak - kasTambahan);
+          let petugas = Number(t.jumlahIbu) || 1;
+          let hakPerOrang = sisaIbu / petugas;
+
+          calcHtml = `
+            <div class="bg-slate-50 p-2 rounded-xl space-y-1">
+              <div class="flex justify-between"><span>Omset:</span> <span class="font-bold">${formatRupiah(omset)}</span></div>
+              <div class="flex justify-between"><span>Modal Awal:</span> <span class="font-bold">− ${formatRupiah(modal)}</span></div>
+              <div class="flex justify-between text-emerald-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>${formatRupiah(bersih)}</span></div>
+              <div class="text-[11px] text-slate-500 pt-1">
+                • Kas Bapak (10%): ${formatRupiah(kasBapak)}<br>
+                • Kas Tambahan (10%): ${formatRupiah(kasTambahan)}<br>
+                👥 <b>Hak per Ibu (${petugas} org): ${formatRupiah(hakPerOrang)}</b>
+              </div>
+            </div>`;
+        } else if (t.unit === 'kedai') {
+          unitName = "Kedai Pasar Segandoel";
+          badgeColor = "bg-amber-100 text-amber-800";
+          let omset = Number(t.omset) || 0;
+          let belanja = Number(t.belanja) || 0;
+          let bersih = Math.max(0, omset - belanja);
+          let kasModal = bersih * 0.50;
+          let bagiPemuda = bersih * 0.50;
+          let petugas = Number(t.jumlahPemuda) || 1;
+          let hakPerOrang = bagiPemuda / petugas;
+
+          calcHtml = `
+            <div class="bg-slate-50 p-2 rounded-xl space-y-1">
+              <div class="flex justify-between"><span>Omset:</span> <span class="font-bold">${formatRupiah(omset)}</span></div>
+              <div class="flex justify-between"><span>Belanja:</span> <span class="font-bold">− ${formatRupiah(belanja)}</span></div>
+              <div class="flex justify-between text-amber-700 font-bold border-t pt-1"><span>Hasil Bersih:</span> <span>${formatRupiah(bersih)}</span></div>
+              <div class="text-[11px] text-slate-500 pt-1">
+                • Kas/Modal (50%): ${formatRupiah(kasModal)}<br>
+                👥 <b>Hak per Pemuda (${petugas} org): ${formatRupiah(hakPerOrang)}</b>
+              </div>
+            </div>`;
+        } else if (t.unit === 'tubing') {
+          unitName = "River Tubing";
+          badgeColor = "bg-blue-100 text-blue-800";
+          let omset = Number(t.omset) || 0;
+          let kasBapak = omset * 0.10;
+          let sisa = omset - kasBapak;
+          let kasTubing = sisa * 0.50;
+          let bagiPemuda = sisa * 0.50;
+          let petugas = Number(t.jumlahPemuda) || 1;
+          let hakPerOrang = bagiPemuda / petugas;
+
+          calcHtml = `
+            <div class="bg-slate-50 p-2 rounded-xl space-y-1">
+              <div class="flex justify-between"><span>Total Omset:</span> <span class="font-bold">${formatRupiah(omset)}</span></div>
+              <div class="text-[11px] text-slate-500 pt-1">
+                • Kas Bapak (10%): ${formatRupiah(kasBapak)}<br>
+                • Kas Tubing (50% sisa): ${formatRupiah(kasTubing)}<br>
+                👥 <b>Hak per Pemuda (${petugas} org): ${formatRupiah(hakPerOrang)}</b>
+              </div>
+            </div>`;
+        }
+
+        card.innerHTML = `
+          <div class="flex justify-between items-center">
+            <span class="${badgeColor} px-2 py-0.5 rounded-md font-bold text-[10px]">${unitName}</span>
+            <span class="text-slate-400">${t.tanggal}</span>
+          </div>
+          ${t.catatan ? `<p class="italic text-slate-600">"${t.catatan}"</p>` : ''}
+          ${calcHtml}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function submitData() {
+      if (APPS_SCRIPT_URL.includes("GANTI_DENGAN_URL")) {
+        alert("Harap masukkan URL Web App Apps Script terlebih dahulu di dalam file kode!");
+        return;
+      }
+
+      const unit = document.getElementById('input-unit').value;
+      const tanggal = document.getElementById('input-tanggal').value;
+      const omset = document.getElementById('input-omset').value;
+      const catatan = document.getElementById('input-catatan').value;
+
+      if (!omset || !tanggal) {
+        alert("Tanggal dan Omset wajib diisi!");
+        return;
+      }
+
+      let payload = { tanggal, omset: Number(omset), catatan };
+
+      if (unit === 'pasar') {
+        payload.modal = Number(document.getElementById('input-modal').value) || 0;
+        payload.pengeluaran = 0;
+        payload.jumlahIbu = Number(document.getElementById('input-jumlah-ibu').value) || 1;
+      } else if (unit === 'kedai') {
+        payload.belanja = Number(document.getElementById('input-belanja').value) || 0;
+        payload.jumlahPemuda = Number(document.getElementById('input-jumlah-pemuda').value) || 1;
+      } else if (unit === 'tubing') {
+        payload.pengeluaran = 0;
+        payload.jumlahPemuda = Number(document.getElementById('input-jumlah-pemuda').value) || 1;
+      }
+
+      const btn = document.getElementById('btn-submit');
+      btn.innerText = "Mengirim...";
+      btn.disabled = true;
+
+      const actionName = unit === 'pasar' ? 'addPasar' : unit === 'kedai' ? 'addKedai' : 'addTubing';
+
+      fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: actionName, payload })
+      }).then(() => {
+        alert("Laporan berhasil dikirim dan masuk ke Google Sheets!");
+        btn.innerText = "Kirim & Simpan Laporan";
+        btn.disabled = false;
+        loadData(); // Refresh data
+      }).catch(err => {
+        alert("Gagal mengirim laporan: " + err);
+        btn.innerText = "Kirim & Simpan Laporan";
+        btn.disabled = false;
+      });
+    }
+
+    // Load data otomatis saat halaman dibuka
+    window.onload = loadData;
+  </script>
+</body>
+</html>
