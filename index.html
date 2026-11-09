@@ -1,0 +1,8 @@
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzvMZ82Ar3jSv8rDHDNpGsGjKIgE3WkGN0f3d7eiBnIc614YTsnjet2GPmFxuUwII8lwA/exec";
+
+fetch(`${APPS_SCRIPT_URL}?action=getData`)
+  .then(res => res.json())
+  .then(data => {
+    console.log("Data dari Spreadsheet:", data);
+    // Tampilkan data ke halaman web Anda
+  });
